@@ -16,15 +16,11 @@
 
 package com.android.volley.toolbox;
 
-import java.io.BufferedInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.ProtocolException;
 import java.net.URL;
@@ -49,9 +45,12 @@ import org.apache.http.message.BasicStatusLine;
 import com.android.volley.AuthFailureError;
 import com.android.volley.Request;
 import com.android.volley.Request.Method;
-import com.android.volley.Response.ProgressListener;
+import com.android.volley.plus.multipart.FilePart;
 import com.android.volley.plus.multipart.MultiPartRequest;
 import com.android.volley.plus.multipart.MultiPartRequest.MultiPartParam;
+import com.android.volley.plus.multipart.MultipartEntity;
+import com.android.volley.plus.multipart.ProgressListener;
+import com.android.volley.plus.multipart.StringPart;
 
 /**
  * An {@link HttpStack} based on {@link HttpURLConnection}.
@@ -59,17 +58,7 @@ import com.android.volley.plus.multipart.MultiPartRequest.MultiPartParam;
 public class HurlStack implements HttpStack {
 
     private static final String HEADER_CONTENT_TYPE = "Content-Type";
-    private static final String HEADER_CONTENT_DISPOSITION = "Content-Disposition";
-    private static final String HEADER_CONTENT_TRANSFER_ENCODING = "Content-Transfer-Encoding";
     private static final String CONTENT_TYPE_MULTIPART = "multipart/form-data; charset=%s; boundary=%s";
-    private static final String BINARY = "binary";
-    private static final String CRLF = "\r\n";
-    private static final String FORM_DATA = "form-data; name=\"%s\"";
-    private static final String BOUNDARY_PREFIX = "--";
-    private static final String CONTENT_TYPE_OCTET_STREAM = "application/octet-stream";
-    private static final String FILENAME = "filename=%s";
-    private static final String COLON_SPACE = ": ";
-    private static final String SEMICOLON_SPACE = "; ";
 
     /**
      * An interface for transforming URLs before use.
@@ -217,82 +206,40 @@ public class HurlStack implements HttpStack {
             ProtocolException {
 
         final String charset = ((MultiPartRequest<?>) request).getProtocolCharset();
-        final int curTime = (int) (System.currentTimeMillis() / 1000);
-        final String boundary = BOUNDARY_PREFIX + curTime;
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
-        connection.setRequestProperty(HEADER_CONTENT_TYPE, String.format(CONTENT_TYPE_MULTIPART, charset, curTime));
-//        connection.setChunkedStreamingMode(0); // Exception sendto failed: EPIPE (Broken pipe)暂时不知道原因
-
-        Map<String, MultiPartParam> multipartParams = ((MultiPartRequest<?>) request).getMultipartParams();
-        Map<String, String> filesToUpload = ((MultiPartRequest<?>) request).getFilesToUpload();
-        PrintWriter writer = null;
-        try {
-            OutputStream out = connection.getOutputStream();
-            writer = new PrintWriter(new OutputStreamWriter(out, charset), true);
-
-            for (String key : multipartParams.keySet()) {
-                MultiPartParam param = multipartParams.get(key);
-
-                writer.append(boundary).append(CRLF).append(String.format(HEADER_CONTENT_DISPOSITION + COLON_SPACE + FORM_DATA, key)).append(CRLF)
-                        .append(HEADER_CONTENT_TYPE + COLON_SPACE + param.contentType).append(CRLF).append(CRLF).append(param.value).append(CRLF)
-                        .flush();
-            }
-
-            for (String key : filesToUpload.keySet()) {
-
-                File file = new File(filesToUpload.get(key));
-
-                if (!file.exists()) {
-                    throw new IOException(String.format("File not found: %s", file.getAbsolutePath()));
-                }
-
-                if (file.isDirectory()) {
-                    throw new IOException(String.format("File is a directory: %s", file.getAbsolutePath()));
-                }
-
-                writer.append(boundary)
-                        .append(CRLF)
-                        .append(String.format(HEADER_CONTENT_DISPOSITION + COLON_SPACE + FORM_DATA + SEMICOLON_SPACE + FILENAME, key, file.getName()))
-                        .append(CRLF).append(HEADER_CONTENT_TYPE + COLON_SPACE + CONTENT_TYPE_OCTET_STREAM).append(CRLF)
-                        .append(HEADER_CONTENT_TRANSFER_ENCODING + COLON_SPACE + BINARY).append(CRLF).append(CRLF).flush();
-                BufferedInputStream input = null;
-                try {
-                    FileInputStream fis = new FileInputStream(file);
-                    input = new BufferedInputStream(fis);
-                    int bufferLength = 0;
-
-                    byte[] buffer = new byte[1024];
-                    while ((bufferLength = input.read(buffer)) > 0) {
-                        out.write(buffer, 0, bufferLength);
-                    }
-                    out.flush(); // Important! Output cannot be closed. Close of
-                                    // writer will close
-                                    // output as well.
-                } finally {
-                    if (input != null)
-                        try {
-                            input.close();
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
-                        }
-                }
-                writer.append(CRLF).flush(); // CRLF is important! It indicates
-                                                // end of binary
-                                                // boundary.
-            }
-
-            // End of multipart/form-data.
-            writer.append(boundary + BOUNDARY_PREFIX).append(CRLF).flush();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-
-        } finally {
-            if (writer != null) {
-                writer.close();
-            }
+        ProgressListener progressListener = null;
+        if (request instanceof ProgressListener) {
+            progressListener = (ProgressListener) request;
         }
+        MultipartEntity multipartEntity = new MultipartEntity();
+        connection.setRequestProperty(HEADER_CONTENT_TYPE, String.format(CONTENT_TYPE_MULTIPART, charset, multipartEntity.getBoundary()));
+//        connection.setChunkedStreamingMode(0);
+        OutputStream out = connection.getOutputStream();
+        final Map<String, MultiPartParam> multipartParams = ((MultiPartRequest<?>) request).getMultipartParams();
+        final Map<String, String> filesToUpload = ((MultiPartRequest<?>) request).getFilesToUpload();
+
+        for (String key : multipartParams.keySet()) {
+            multipartEntity.addPart(new StringPart(key, multipartParams.get(key).value));
+        }
+
+        for (String key : filesToUpload.keySet()) {
+            File file = new File(filesToUpload.get(key));
+
+            if (!file.exists()) {
+                throw new IOException(String.format("File not found: %s", file.getAbsolutePath()));
+            }
+
+            if (file.isDirectory()) {
+                throw new IOException(String.format("File is a directory: %s", file.getAbsolutePath()));
+            }
+
+            FilePart filePart = new FilePart(key, file, null, null);
+            filePart.setProgressListener(progressListener);
+            
+            multipartEntity.addPart(filePart);
+        }
+        multipartEntity.writeTo(out);
     }
 
     @SuppressWarnings("deprecation")
@@ -341,31 +288,10 @@ public class HurlStack implements HttpStack {
     private static void addBodyIfExists(HttpURLConnection connection, Request<?> request) throws IOException, AuthFailureError {
         byte[] body = request.getBody();
         if (body != null) {
-            ProgressListener progressListener = null;
-            if (request instanceof ProgressListener) {
-                progressListener = (ProgressListener) request;
-            }
             connection.setDoOutput(true);
             connection.addRequestProperty(HEADER_CONTENT_TYPE, request.getBodyContentType());
             DataOutputStream out = new DataOutputStream(connection.getOutputStream());
-
-            if (progressListener != null) {
-                int transferredBytes = 0;
-                int totalSize = body.length;
-                int offset = 0;
-                int chunkSize = Math.min(2048, Math.max(totalSize - offset, 0));
-                while (chunkSize > 0 && offset + chunkSize <= totalSize) {
-                    out.write(body, offset, chunkSize);
-                    transferredBytes += chunkSize;
-                    progressListener.onProgress(transferredBytes, totalSize);
-                    offset += chunkSize;
-                    chunkSize = Math.min(chunkSize, Math.max(totalSize - offset, 0));
-                }
-            }
-            else{
-                out.write(body);
-            }
-
+            out.write(body);
             out.close();
         }
     }

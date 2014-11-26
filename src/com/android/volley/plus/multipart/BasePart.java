@@ -10,11 +10,11 @@ import org.apache.http.util.EncodingUtils;
 abstract class BasePart implements Part
 {
     protected static final byte[] CRLF = EncodingUtils.getAsciiBytes(MultipartEntity.CRLF);
-    protected static final String HEADER_CONTENT_TYPE = "Content-Type";
+    public static final String HEADER_CONTENT_TYPE = "Content-Type";
     protected static final String HEADER_USER_AGENT = "User-Agent";
     protected static final String HEADER_CONTENT_DISPOSITION = "Content-Disposition";
     protected static final String HEADER_CONTENT_TRANSFER_ENCODING = "Content-Transfer-Encoding";
-    protected static final String CONTENT_TYPE_MULTIPART = "multipart/form-data; charset=%s; boundary=%s";
+    public static final String CONTENT_TYPE_MULTIPART = "multipart/form-data; charset=%s; boundary=%s";
     protected static final String BINARY = "binary";
     protected static final String EIGHT_BIT = "8bit";
     protected static final String FORM_DATA = "form-data; name=\"%s\"";
