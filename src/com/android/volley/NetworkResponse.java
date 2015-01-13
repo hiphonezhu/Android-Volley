@@ -53,7 +53,7 @@ public class NetworkResponse {
 
     /** Raw data from this response. */
     public final byte[] data;
-
+    
     /** Response headers. */
     public final Map<String, String> headers;
 
