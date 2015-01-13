@@ -15,6 +15,9 @@
  */
 package com.android.volley.toolbox;
 
+import java.util.HashMap;
+import java.util.LinkedList;
+
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.os.Handler;
@@ -26,10 +29,6 @@ import com.android.volley.RequestQueue;
 import com.android.volley.Response.ErrorListener;
 import com.android.volley.Response.Listener;
 import com.android.volley.VolleyError;
-import com.android.volley.toolbox.ImageRequest;
-
-import java.util.HashMap;
-import java.util.LinkedList;
 
 /**
  * Helper that handles loading and caching images from remote URLs.
@@ -70,11 +69,13 @@ public class ImageLoader {
     /**
      * Simple cache adapter interface. If provided to the ImageLoader, it
      * will be used as an L1 cache before dispatch to Volley. Implementations
-     * must not block. Implementation with an CacheInterface is recommended.
+     * must not block. Implementation with an ImageCache is recommended.
      */
     public interface ImageCache {
         public Bitmap getBitmap(String url);
         public void putBitmap(String url, Bitmap bitmap);
+        public void getBitmap(String url, final Listener<Bitmap> listener);
+        public void putBitmap(String url, Bitmap bitmap, final Listener<Boolean> listener);
     }
 
     /**
@@ -183,8 +184,8 @@ public class ImageLoader {
      * @return A container object that contains all of the properties of the request, as well as
      *     the currently available image (default if remote is not loaded).
      */
-    public ImageContainer get(String requestUrl, ImageListener imageListener,
-            int maxWidth, int maxHeight) {
+    public ImageContainer get(final String requestUrl, ImageListener imageListener,
+            final int maxWidth, final int maxHeight) {
         // only fulfill requests that were initiated from the main thread.
         throwIfNotOnMainThread();
 
@@ -200,7 +201,7 @@ public class ImageLoader {
         }
 
         // The bitmap did not exist in the cache, fetch it!
-        ImageContainer imageContainer =
+        final ImageContainer imageContainer =
                 new ImageContainer(null, requestUrl, cacheKey, imageListener);
 
         // Update the caller to let them know that they should use the default bitmap.
@@ -214,13 +215,19 @@ public class ImageLoader {
             return imageContainer;
         }
 
-        // The request is not already in flight. Send the new request to the network and
-        // track it.
-        Request<?> newRequest =
+        // The request is not already in flight. Prepared request and add it to flights
+        final Request<?> newRequest =
             new ImageRequest(requestUrl, new Listener<Bitmap>() {
                 @Override
-                public void onResponse(Bitmap response) {
-                    onGetImageSuccess(cacheKey, response);
+                public void onResponse(final Bitmap response) {
+                    mCache.putBitmap(requestUrl, response, new Listener<Boolean>()
+                    {
+                        @Override
+                        public void onResponse(Boolean success)
+                        {
+                            onGetImageSuccess(cacheKey, response);
+                        }
+                    });
                 }
             }, maxWidth, maxHeight,
             Config.RGB_565, new ErrorListener() {
@@ -229,10 +236,25 @@ public class ImageLoader {
                     onGetImageError(cacheKey, error);
                 }
             });
-
-        mRequestQueue.add(newRequest);
         mInFlightRequests.put(cacheKey,
                 new BatchedImageRequest(newRequest, imageContainer));
+        //  Try to look up the request in the cache of remote images(Disk cache).
+        mCache.getBitmap(requestUrl, new Listener<Bitmap>()
+        {
+            @Override
+            public void onResponse(Bitmap response)
+            {
+                if (response != null)
+                {
+                    onGetImageSuccess(cacheKey, response);
+                }
+                else
+                {
+                    // Add to request queue
+                    mRequestQueue.add(newRequest);
+                }
+            }
+        });
         return imageContainer;
     }
 

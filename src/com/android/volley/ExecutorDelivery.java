@@ -49,6 +49,11 @@ public class ExecutorDelivery implements ResponseDelivery {
     public ExecutorDelivery(Executor executor) {
         mResponsePoster = executor;
     }
+    
+    public void postRunnable(Runnable runnable)
+    {
+        mResponsePoster.execute(runnable);
+    }
 
     @Override
     public void postResponse(Request<?> request, Response<?> response) {

@@ -3,29 +3,27 @@ package libcore.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.HashMap;
 
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Handler;
+import android.os.Looper;
 
+import com.android.volley.ExecutorDelivery;
 import com.android.volley.Response.Listener;
+import com.android.volley.toolbox.ImageLoader.ImageCache;
 /**
  * L1&L2 cache
  * @author hiphonezhu@gmail.com
  * @version [Android-Volley, 2015-1-13]
  */
-public class BitmapCache implements CacheInterface
+public class BitmapCache implements ImageCache
 {
     private MemoryLruCache memoryLruCache;
     private DiskLruCache diskLruCache;
     private static BitmapCache sInstance;
-    /**
-     * HashMap of Cache keys -> used to track in-flight disk search task so
-     * that we can coalesce multiple search to the same URL into a single task.
-     */
-    private final HashMap<String, Boolean> mInFlightRequests =
-            new HashMap<String, Boolean>();
+    private ExecutorDelivery delivery;
     
     public static synchronized BitmapCache getInstance(Context context)
     {
@@ -38,6 +36,7 @@ public class BitmapCache implements CacheInterface
     
     private BitmapCache(Context context)
     {
+        delivery = new ExecutorDelivery(new Handler(Looper.getMainLooper()));
         memoryLruCache = MemoryLruCache.getInstance(); 
         try
         {
@@ -50,60 +49,12 @@ public class BitmapCache implements CacheInterface
     }
     
     @Override
-    public void getBitmap(String url, final Listener<Bitmap> listener)
+    public Bitmap getBitmap(String url)
     {
         final String key = Utils.hashKeyForDisk(url);
-        // find in memory
-        memoryLruCache.getBitmap(key, new Listener<Bitmap>()
-        {
-            @Override
-            public void onResponse(Bitmap response)
-            {
-                if (response != null)
-                {
-                    listener.onResponse(response);
-                }
-                else
-                {
-                    // Check to see if a search is already in-flight.
-                    if (mInFlightRequests.get(key))
-                    {
-                        return;
-                    }
-                    else
-                    {
-                        // find in disk
-                        new Thread(new Runnable()
-                        {
-                            @Override
-                            public void run()
-                            {
-                                DiskLruCache.Snapshot snapShot;
-                                try
-                                {
-                                    snapShot = diskLruCache.get(key);
-                                    if (snapShot != null) 
-                                    {  
-                                        InputStream is = snapShot.getInputStream(0);  
-                                        Bitmap bitmap = BitmapFactory.decodeStream(is);  
-                                        if (bitmap != null)
-                                        {
-                                            memoryLruCache.putBitmap(key, bitmap);
-                                        }
-                                        listener.onResponse(bitmap);
-                                    }
-                                }
-                                catch (IOException e)
-                                {
-                                    e.printStackTrace();
-                                }  
-                            }
-                        }).start();
-                    }
-                }
-            }
-        });
+        return memoryLruCache.getBitmap(key);
     }
+    
 
     @Override
     public void putBitmap(String url, Bitmap bitmap)
@@ -111,23 +62,99 @@ public class BitmapCache implements CacheInterface
         final String key = Utils.hashKeyForDisk(url);
         // save in memory
         memoryLruCache.putBitmap(key, bitmap);
+    }
+    
+    /**
+     * Find bitmap from disk cache
+     * @param url
+     * @param listener
+     * @see com.android.volley.toolbox.ImageLoader.ImageCache#getBitmap(java.lang.String, com.android.volley.Response.Listener)
+     */
+    public void getBitmap(String url, final Listener<Bitmap> listener)
+    {
+        final String key = Utils.hashKeyForDisk(url);
+        // find in disk
+        new Thread(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                Bitmap bitmap = null;
+                try
+                {
+                    DiskLruCache.Snapshot snapShot = diskLruCache.get(key);
+                    if (snapShot != null) 
+                    {  
+                        InputStream is = snapShot.getInputStream(0);  
+                        bitmap = BitmapFactory.decodeStream(is);  
+                    }
+                }
+                catch (Exception e) 
+                {
+                    e.printStackTrace();
+                }
+                finally
+                {
+                    final Bitmap response = bitmap;
+                    delivery.postRunnable(new Runnable()
+                    {
+                        @Override
+                        public void run()
+                        {
+                            listener.onResponse(response);
+                        }
+                    });
+                }
+            }
+        }).start();
+    }
+    
+    /**
+     * Save bitmap to disk cache
+     * @param url
+     * @param bitmap
+     * @param listener
+     * @see com.android.volley.toolbox.ImageLoader.ImageCache#putBitmap(java.lang.String, android.graphics.Bitmap, com.android.volley.Response.Listener)
+     */
+    @Override
+    public void putBitmap(String url, final Bitmap bitmap, final Listener<Boolean> listener)
+    {
+        final String key = Utils.hashKeyForDisk(url);
         // save in disk
-        try
+        new Thread(new Runnable()
         {
-            DiskLruCache.Editor editor = diskLruCache.edit(key);  
-            if (editor != null) {  
-                OutputStream outputStream = editor.newOutputStream(0); 
-                if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)) {  
-                    editor.commit();  
-                } else {  
-                    editor.abort();  
-                }  
-            }  
-            diskLruCache.flush();  
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-        }
+            @Override
+            public void run()
+            {
+                try
+                {
+                    DiskLruCache.Editor editor = diskLruCache.edit(key);  
+                    if (editor != null) {  
+                        OutputStream outputStream = editor.newOutputStream(0); 
+                        if (bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)) {  
+                            editor.commit();  
+                        } else {  
+                            editor.abort();  
+                        }  
+                    }  
+                    diskLruCache.flush();  
+                }
+                catch (IOException e)
+                {
+                    e.printStackTrace();
+                }
+                finally
+                {
+                    delivery.postRunnable(new Runnable()
+                    {
+                        @Override
+                        public void run()
+                        {
+                            listener.onResponse(true);
+                        }
+                    });
+                }
+            }
+        }).start();
     }
 }
