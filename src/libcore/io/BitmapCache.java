@@ -22,25 +22,31 @@ public class BitmapCache implements ImageCache
 {
     private MemoryLruCache memoryLruCache;
     private DiskLruCache diskLruCache;
-    private static BitmapCache sInstance;
     private ExecutorDelivery delivery;
+    private static BitmapCache sInstance;
     
-    public static synchronized BitmapCache getInstance(Context context)
+    /**
+     * single instance
+     * @param context
+     * @param cacheDir directory used to cache bitmap
+     * @return
+     */
+    public static synchronized BitmapCache getInstance(Context context, String cacheDir)
     {
         if (sInstance == null)
         {
-            sInstance = new BitmapCache(context.getApplicationContext());
+            sInstance = new BitmapCache(context.getApplicationContext(), cacheDir);
         }
         return sInstance;
     }
     
-    private BitmapCache(Context context)
+    private BitmapCache(Context context, String cacheDir)
     {
         delivery = new ExecutorDelivery(new Handler(Looper.getMainLooper()));
         memoryLruCache = MemoryLruCache.getInstance(); 
         try
         {
-            diskLruCache = DiskLruCache.open(Utils.getDiskCacheDir(context, "bitmap"), Utils.getVerCode(context), 1, 10 * 10 * 1024);
+            diskLruCache = DiskLruCache.open(Utils.getDiskCacheDir(context, cacheDir), Utils.getVerCode(context), 1, 10 * 10 * 1024);
         }
         catch (IOException e)
         {
@@ -60,7 +66,6 @@ public class BitmapCache implements ImageCache
     public void putBitmap(String url, Bitmap bitmap)
     {
         final String key = Utils.hashKeyForDisk(url);
-        // save in memory
         memoryLruCache.putBitmap(key, bitmap);
     }
     
@@ -73,7 +78,6 @@ public class BitmapCache implements ImageCache
     public void getBitmap(String url, final Listener<Bitmap> listener)
     {
         final String key = Utils.hashKeyForDisk(url);
-        // find in disk
         new Thread(new Runnable()
         {
             @Override
@@ -120,7 +124,6 @@ public class BitmapCache implements ImageCache
     public void putBitmap(String url, final Bitmap bitmap, final Listener<Boolean> listener)
     {
         final String key = Utils.hashKeyForDisk(url);
-        // save in disk
         new Thread(new Runnable()
         {
             @Override
