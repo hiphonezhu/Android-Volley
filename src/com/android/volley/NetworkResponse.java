@@ -18,6 +18,7 @@ package com.android.volley;
 
 import org.apache.http.HttpStatus;
 
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.Map;
 
@@ -38,6 +39,23 @@ public class NetworkResponse {
         this.data = data;
         this.headers = headers;
         this.notModified = notModified;
+        this.is = null;
+    }
+    
+    /**
+     * Creates a new network response.
+     * @param statusCode the HTTP status code
+     * @param is Response body
+     * @param headers Headers returned with this response, or null for none
+     * @param notModified True if the server returned a 304 and the data was already in cache
+     */
+    public NetworkResponse(int statusCode, InputStream is, Map<String, String> headers,
+            boolean notModified) {
+        this.statusCode = statusCode;
+        this.is = is;
+        this.headers = headers;
+        this.notModified = notModified;
+        this.data = null;
     }
 
     public NetworkResponse(byte[] data) {
@@ -53,6 +71,9 @@ public class NetworkResponse {
 
     /** Raw data from this response. */
     public final byte[] data;
+    
+    /** InputStream from this response*/
+    public final InputStream is;
     
     /** Response headers. */
     public final Map<String, String> headers;

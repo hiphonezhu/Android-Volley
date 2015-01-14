@@ -101,7 +101,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
 
     /** An opaque token tagging this request; used for bulk cancellation. */
     private Object mTag;
-
+    
     /**
      * Creates a new request with the given URL and error listener.  Note that
      * the normal response listener is not provided here as delivery of responses
@@ -142,6 +142,15 @@ public abstract class Request<T> implements Comparable<Request<T>> {
      */
     public void setTag(Object tag) {
         mTag = tag;
+    }
+
+    /**
+     * Whether returned response is InputStream
+     * @return
+     */
+    public boolean isNeedStream()
+    {
+        return false;
     }
 
     /**

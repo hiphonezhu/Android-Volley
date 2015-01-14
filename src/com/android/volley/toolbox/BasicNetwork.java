@@ -16,6 +16,22 @@
 
 package com.android.volley.toolbox;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.StatusLine;
+import org.apache.http.conn.ConnectTimeoutException;
+import org.apache.http.impl.cookie.DateUtils;
+
 import android.os.SystemClock;
 
 import com.android.volley.AuthFailureError;
@@ -30,22 +46,6 @@ import com.android.volley.ServerError;
 import com.android.volley.TimeoutError;
 import com.android.volley.VolleyError;
 import com.android.volley.VolleyLog;
-
-import org.apache.http.Header;
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.StatusLine;
-import org.apache.http.conn.ConnectTimeoutException;
-import org.apache.http.impl.cookie.DateUtils;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.net.SocketTimeoutException;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * A network performing Volley requests over an {@link HttpStack}.
@@ -101,23 +101,39 @@ public class BasicNetwork implements Network {
                             request.getCacheEntry().data, responseHeaders, true);
                 }
 
-                // Some responses such as 204s do not have content.  We must check.
-                if (httpResponse.getEntity() != null) {
-                  responseContents = entityToBytes(httpResponse.getEntity());
-                } else {
-                  // Add 0 byte response as a way of honestly representing a
-                  // no-content request.
-                  responseContents = new byte[0];
+                if (request.isNeedStream())
+                {
+                    if (statusCode < 200 || statusCode > 299) {
+                        throw new IOException();
+                    }
+                    InputStream is = null;
+                    // Some responses such as 204s do not have content.  We must check.
+                    if (httpResponse.getEntity() != null) 
+                    {
+                        is = httpResponse.getEntity().getContent();
+                    }
+                    return new NetworkResponse(statusCode, is, responseHeaders, false);
                 }
-
-                // if the request is slow, log it.
-                long requestLifetime = SystemClock.elapsedRealtime() - requestStart;
-                logSlowRequests(requestLifetime, request, responseContents, statusLine);
-
-                if (statusCode < 200 || statusCode > 299) {
-                    throw new IOException();
+                else
+                {
+                    // Some responses such as 204s do not have content.  We must check.
+                    if (httpResponse.getEntity() != null) {
+                        responseContents = entityToBytes(httpResponse.getEntity());
+                    } else {
+                        // Add 0 byte response as a way of honestly representing a
+                        // no-content request.
+                        responseContents = new byte[0];
+                    }
+                    
+                    // if the request is slow, log it.
+                    long requestLifetime = SystemClock.elapsedRealtime() - requestStart;
+                    logSlowRequests(requestLifetime, request, responseContents, statusLine);
+                    
+                    if (statusCode < 200 || statusCode > 299) {
+                        throw new IOException();
+                    }
+                    return new NetworkResponse(statusCode, responseContents, responseHeaders, false);
                 }
-                return new NetworkResponse(statusCode, responseContents, responseHeaders, false);
             } catch (SocketTimeoutException e) {
                 attemptRetryOnException("socket", request, new TimeoutError());
             } catch (ConnectTimeoutException e) {
@@ -163,7 +179,7 @@ public class BasicNetwork implements Network {
                     statusLine.getStatusCode(), request.getRetryPolicy().getCurrentRetryCount());
         }
     }
-
+    
     /**
      * Attempts to prepare the request for a retry. If there are no more attempts remaining in the
      * request's retry policy, a timeout exception is thrown.
