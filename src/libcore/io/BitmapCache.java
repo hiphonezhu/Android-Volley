@@ -3,6 +3,8 @@ package libcore.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import android.content.Context;
 import android.graphics.Bitmap;
@@ -23,6 +25,7 @@ public class BitmapCache implements ImageCache
     private MemoryLruCache memoryLruCache;
     private DiskLruCache diskLruCache;
     private ExecutorDelivery delivery;
+    private Executor sDefaultExecutor = Executors.newFixedThreadPool(10); // 读取磁盘缓存线程池
     private static BitmapCache sInstance;
     
     /**
@@ -78,7 +81,7 @@ public class BitmapCache implements ImageCache
     public void getBitmap(String url, final Listener<Bitmap> listener)
     {
         final String key = Utils.hashKeyForDisk(url);
-        new Thread(new Runnable()
+        sDefaultExecutor.execute(new Runnable()
         {
             @Override
             public void run()
@@ -110,7 +113,7 @@ public class BitmapCache implements ImageCache
                     });
                 }
             }
-        }).start();
+        });
     }
     
     /**
@@ -124,7 +127,7 @@ public class BitmapCache implements ImageCache
     public void putBitmap(String url, final Bitmap bitmap, final Listener<Boolean> listener)
     {
         final String key = Utils.hashKeyForDisk(url);
-        new Thread(new Runnable()
+        sDefaultExecutor.execute(new Runnable()
         {
             @Override
             public void run()
@@ -158,6 +161,6 @@ public class BitmapCache implements ImageCache
                     });
                 }
             }
-        }).start();
+        });
     }
 }
