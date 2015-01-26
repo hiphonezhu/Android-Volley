@@ -132,6 +132,7 @@ public class BitmapCache implements ImageCache
             @Override
             public void run()
             {
+                boolean saved = false;
                 try
                 {
                     DiskLruCache.Editor editor = diskLruCache.edit(key);  
@@ -144,6 +145,7 @@ public class BitmapCache implements ImageCache
                         }  
                     }  
                     diskLruCache.flush();  
+                    saved = true;
                 }
                 catch (IOException e)
                 {
@@ -151,12 +153,13 @@ public class BitmapCache implements ImageCache
                 }
                 finally
                 {
+                    final boolean success = saved;
                     delivery.postRunnable(new Runnable()
                     {
                         @Override
                         public void run()
                         {
-                            listener.onResponse(true);
+                            listener.onResponse(success);
                         }
                     });
                 }

@@ -70,10 +70,12 @@ public class ImageLoader {
      * Simple cache adapter interface. If provided to the ImageLoader, it
      * will be used as an L1 cache before dispatch to Volley. Implementations
      * must not block. Implementation with an ImageCache is recommended.
+     * Modified: It also be used as an L2 cache after dispatch to volley
      */
     public interface ImageCache {
         public Bitmap getBitmap(String url);
         public void putBitmap(String url, Bitmap bitmap);
+        // L2 cache
         public void getBitmap(String url, final Listener<Bitmap> listener);
         public void putBitmap(String url, Bitmap bitmap, final Listener<Boolean> listener);
     }
@@ -114,9 +116,52 @@ public class ImageLoader {
                     view.setImageResource(defaultImageResId);
                 }
             }
+
+            @Override
+            public void onErrorResponse(VolleyError error, String requestUrl) {
+                onErrorResponse(error);
+            }
         };
     }
+    
+    /**
+     * 适用于ListView等ImageView复用的场景
+     * @param view
+     * @param defaultImageResId
+     * @param errorImageResId
+     * @param requestUrl 图片地址
+     * @return
+     */
+    public static ImageListener getRecycledImageListener(final ImageView view,
+            final int defaultImageResId, final int errorImageResId, final String requestUrl) {
+        view.setTag(requestUrl);
+        return new ImageListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+            }
 
+            @Override
+            public void onResponse(ImageContainer response, boolean isImmediate) {
+                if (view.getTag() != null && response.getRequestUrl().equals(view.getTag().toString())){
+                    if (response.getBitmap() != null) {
+                        view.setImageBitmap(response.getBitmap());
+                    } else if (defaultImageResId != 0) {
+                        view.setImageResource(defaultImageResId);
+                    }
+                }
+            }
+
+            @Override
+            public void onErrorResponse(VolleyError error, String requestUrl) {
+                if (view.getTag() != null && requestUrl.equals(view.getTag().toString())){
+                    if (errorImageResId != 0) {
+                        view.setImageResource(errorImageResId);
+                    }
+                }
+            }
+        };
+    }
+    
     /**
      * Interface for the response handlers on image requests.
      *
@@ -142,6 +187,13 @@ public class ImageLoader {
          * images.
          */
         public void onResponse(ImageContainer response, boolean isImmediate);
+        
+        /**
+         * Error response with request url
+         * @param error
+         * @param requestUrl
+         */
+        public void onErrorResponse(VolleyError error, String requestUrl);
     }
 
     /**
@@ -471,6 +523,7 @@ public class ImageLoader {
                                 container.mListener.onResponse(container, false);
                             } else {
                                 container.mListener.onErrorResponse(bir.getError());
+                                container.mListener.onErrorResponse(bir.getError(), container.getRequestUrl());
                             }
                         }
                     }

@@ -169,6 +169,12 @@ public class NetworkImageView extends ImageView {
                             setImageResource(mDefaultImageId);
                         }
                     }
+
+                    @Override
+                    public void onErrorResponse(VolleyError error, String requestUrl)
+                    {
+                        
+                    }
                 });
 
         // update the ImageContainer to be the new bitmap container.
