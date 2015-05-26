@@ -310,7 +310,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
      *
      * @deprecated Use {@link #getParams()} instead.
      */
-    protected Map<String, String> getPostParams() throws AuthFailureError {
+    protected Map<String, Object> getPostParams() throws AuthFailureError {
         return getParams();
     }
 
@@ -351,7 +351,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
         // here instead of simply calling the getBody() function because this function must
         // call getPostParams() and getPostParamsEncoding() since legacy clients would have
         // overridden these two member functions for POST requests.
-        Map<String, String> postParams = getPostParams();
+        Map<String, Object> postParams = getPostParams();
         if (postParams != null && postParams.size() > 0) {
             return encodeParameters(postParams, getPostParamsEncoding());
         }
@@ -366,7 +366,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
      *
      * @throws AuthFailureError in the event of auth failure
      */
-    protected Map<String, String> getParams() throws AuthFailureError {
+    protected Map<String, Object> getParams() throws AuthFailureError {
         return null;
     }
 
@@ -396,7 +396,7 @@ public abstract class Request<T> implements Comparable<Request<T>> {
      * @throws AuthFailureError in the event of auth failure
      */
     public byte[] getBody() throws AuthFailureError {
-        Map<String, String> params = getParams();
+        Map<String, Object> params = getParams();
         if (params != null && params.size() > 0) {
             return encodeParameters(params, getParamsEncoding());
         }
@@ -406,13 +406,18 @@ public abstract class Request<T> implements Comparable<Request<T>> {
     /**
      * Converts <code>params</code> into an application/x-www-form-urlencoded encoded string.
      */
-    private byte[] encodeParameters(Map<String, String> params, String paramsEncoding) {
+    private byte[] encodeParameters(Map<String, Object> params, String paramsEncoding) {
         StringBuilder encodedParams = new StringBuilder();
         try {
-            for (Map.Entry<String, String> entry : params.entrySet()) {
+            for (Map.Entry<String, Object> entry : params.entrySet()) {
                 encodedParams.append(URLEncoder.encode(entry.getKey(), paramsEncoding));
                 encodedParams.append('=');
-                encodedParams.append(URLEncoder.encode(entry.getValue(), paramsEncoding));
+                Object value = entry.getValue();
+                if (value == null)
+                {
+                    value = "";
+                }
+                encodedParams.append(URLEncoder.encode(value.toString(), paramsEncoding));
                 encodedParams.append('&');
             }
             return encodedParams.toString().getBytes(paramsEncoding);
