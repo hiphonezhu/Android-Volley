@@ -102,6 +102,8 @@ public abstract class Request<T> implements Comparable<Request<T>> {
     /** An opaque token tagging this request; used for bulk cancellation. */
     private Object mTag;
     
+    /** RequestQueue tag */
+    private String volleyTag;
     /**
      * Creates a new request with the given URL and error listener.  Note that
      * the normal response listener is not provided here as delivery of responses
@@ -159,6 +161,16 @@ public abstract class Request<T> implements Comparable<Request<T>> {
      */
     public Object getTag() {
         return mTag;
+    }
+    
+    public String getVolleyTag()
+    {
+        return volleyTag;
+    }
+
+    public void setVolleyTag(String volleyTag)
+    {
+        this.volleyTag = volleyTag;
     }
 
     /**
